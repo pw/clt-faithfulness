@@ -72,21 +72,65 @@ most of their writing local. They match the PLT on direction and damp the respon
 about 25%. Seeds agree to 0.01.
 
 ## C. Fixed-penalty sweep (θ₀ = 0.1, so sparsity has to come from the penalty)
-Adjacent layers. L0 = total active features per token.
+Adjacent layers. L0 = total active features per token. "own" = write energy kept in the source layer.
 
-| transcoder | λ | L0 | cos | ratio | own-layer write |
+| transcoder | λ | L0 | cos | ratio | own |
 |---|---|---|---|---|---|
+| CLT concat | 0.003 | 704 | 0.60 | 0.77 | 0.82 |
+| CLT concat | 0.01 (2 seeds) | 76 / 76 | 0.22 / 0.23 | 0.67 / 0.68 | 0.51 / 0.49 |
+| CLT concat | 0.03 | 51 | 0.16 | 0.81 | 0.39 |
 | CLT concat | 0.1 | 29 | 0.13 | 0.54 | 0.32 |
 | CLT concat | 0.3 | 7 | 0.16 | 0.32 | 0.23 |
 | CLT concat | 1.0 | 3 | 0.17 | 0.09 | 0.18 |
-| CLT sum-of-norms | 0.3 | 6 | 0.14 | 0.16 | 0.26 |
-| CLT sum-of-norms | 1.0 | 2 | 0.11 | 0.03 | 0.23 |
+| CLT sum-of-norms | 0.003 | 317 | 0.42 | 0.70 | 0.81 |
+| CLT sum-of-norms | 0.01 | 140 | 0.19 | 0.69 | 0.60 |
+| CLT sum-of-norms | 0.03 | 127 | 0.18 | 0.67 | 0.43 |
+| CLT sum-of-norms | 0.3 / 1.0 | 6 / 2 | 0.14 / 0.11 | 0.16 / 0.03 | 0.26 / 0.23 |
+| PLT | 0.003 | 1048 | 0.68 | 0.95 | 1 |
+| PLT | 0.01 | 117 | 0.30 | 1.00 | 1 |
+| PLT | 0.03 | 97 | 0.23 | 0.98 | 1 |
 | PLT | 0.3 | 15 | 0.18 | 0.52 | 1 |
 
-- Penalty-driven sparsity reproduces the public CLTs' regime: front-loaded L0 and 18–32%
-  own-layer writing. It also reproduces their adjacent-layer direction deficit.
-- At these extreme sparsities, a penalty-driven PLT is nearly as unfaithful (0.18), so this grid
-  cannot separate cross-layer routing from sparsity. Moderate-sparsity runs are pending:
-  CLT λ 0.01 / 0.003 (+seed), matched PLT λ 0.01 / 0.003, sum-of-norms λ 0.03 / 0.01 / 0.003.
-- Sum-of-norms (fix 1) does not raise own-layer writing at matched penalty. It is just a
-  stronger penalty, about 10× sparser at the same λ.
+## D. The one curve
+Fit adjacent-layer cos against ln L0 on all PLTs (L0 ≥ 50; both recipes):
+**cos = −0.56 + 0.18 · ln L0**, residuals ≤ 0.03.
+
+Mean residual from that curve:
+
+| family | n | mean residual |
+|---|---|---|
+| PLT (fit) | 7 | 0.00 |
+| controller CLTs | 6 | +0.02 |
+| penalty concat CLTs | 4 | 0.00 |
+| **penalty sum-of-norms CLTs (fix 1)** | 3 | **−0.11** |
+
+**At matched sparsity, CLTs are as intervention-faithful as per-layer transcoders.** This holds
+even though their own-layer write share ranges from 0.39 to 0.85 and their L0 profiles range
+from flat to strongly front-loaded. On this metric, cross-layer routing does not cost
+faithfulness. Sparsity does, steeply: about +0.18 cos per e-fold of L0.
+
+The proposed sum-of-norms fix is the one off-curve variant, and it is *worse*.
+
+Magnitudes: CLTs under-respond more than PLTs (ratio about 0.7 vs 0.9 at adjacent layers). That
+is the one CLT-specific difference that survives.
+
+## E. Public models, re-read with the L0 confound in mind
+- **Gemma-2-2B.** GemmaScope's per-layer L0 jumps from ~50–98 (layers 1–10) to ~5–16 (layers
+  11–22). The CLT-vs-PLT ordering flips with it: PLT ahead at layers 1–10, CLT ahead at 11–13.
+  At matched per-layer L0 (layers 12–23, mean L0 10.3 vs 10.9) the two are equal:
+  **cos 0.28 vs 0.29**. The headline gap (0.32 vs 0.43) is L0.
+- **Llama-3.2-1B.** The gap persists at matched per-layer L0 (0.34 vs 0.78). But the PLT's linear
+  skip path *alone*, with no features, scores 0.65. The PLT's advantage is mostly its skip
+  connection, not the absence of cross-layer structure.
+
+## Conclusion (pending the skip-connection runs)
+1. A causal instrument for replacement-model faithfulness: bit-exact frozen-error hybrid,
+   resample-ablate MLP_s, compare every later MLP's response. It is cheap, needs no labels, and
+   carries POS/NEG/linear controls.
+2. The CLT deficit you see in public transcoders is real as a number and misleading as a
+   conclusion. Once sparsity and skip connections are controlled, it is not about cross-layer
+   writing.
+3. **Any CLT-vs-PLT faithfulness comparison must match L0** (and skip connections). Including
+   Lange et al.'s Gemma comparison, which used CLT-HP vs GemmaScope PLTs of very different L0.
+4. The sum-of-norms decoder penalty makes things worse.
+5. In progress: CLT and PLT with learned skip connections at matched L0 (does the skip close the gap?).
