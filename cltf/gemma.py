@@ -40,7 +40,11 @@ class Gemma:
         self.d = self.cfg.hidden_size
 
     def embed(self, ids):
-        return self.m.embed_tokens(ids) * torch.tensor(self.d ** 0.5, dtype=torch.float32)
+        # newer transformers fold the sqrt(d) scale into the embedding module itself
+        e = self.m.embed_tokens(ids)
+        if type(self.m.embed_tokens).__name__.startswith("Gemma") and "Scaled" in type(self.m.embed_tokens).__name__:
+            return e
+        return e * torch.tensor(self.d ** 0.5, dtype=torch.float32)
 
     def _pe(self, h, T):
         pos = torch.arange(T, device=h.device)[None]
