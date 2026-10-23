@@ -10,12 +10,12 @@ import torch.nn.functional as F
 
 
 class GPT2:
-    def __init__(self, sd, device="cuda", dtype=torch.float32):
+    def __init__(self, sd, device="cuda", dtype=torch.float32, n_layer=12, n_head=12):
         g = lambda k: sd[k].to(device=device, dtype=dtype)
         self.wte = g("transformer.wte.weight")
         self.wpe = g("transformer.wpe.weight")
-        self.n_layer = 12
-        self.n_head = 12
+        self.n_layer = n_layer
+        self.n_head = n_head
         self.d = self.wte.shape[1]
         self.L = []
         for l in range(self.n_layer):
@@ -77,10 +77,11 @@ class GPT2:
         return self.logits(h), xs, ys
 
 
-def load_gpt2(device="cuda", dtype=torch.float32):
+def load_gpt2(device="cuda", dtype=torch.float32, name="gpt2"):
     from transformers import GPT2LMHeadModel
-    hf = GPT2LMHeadModel.from_pretrained("gpt2")
-    return GPT2(hf.state_dict(), device, dtype), hf
+    hf = GPT2LMHeadModel.from_pretrained(name)
+    c = hf.config
+    return GPT2(hf.state_dict(), device, dtype, c.n_layer, c.n_head), hf
 
 
 @torch.no_grad()

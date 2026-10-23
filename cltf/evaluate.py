@@ -36,10 +36,10 @@ from .gpt2 import load_gpt2
 from .transcoder import Transcoder
 
 
-def load_tc(run_dir):
+def load_tc(run_dir, n_layer=12, d=768):
     ck = torch.load(os.path.join(run_dir, "ckpt.pt"), map_location="cuda")
     c = ck["cfg"]
-    tc = Transcoder(12, 768, c["F"], c["kind"], c["window"], c["norm"]).cuda()
+    tc = Transcoder(n_layer, d, c["F"], c["kind"], c["window"], c["norm"]).cuda()
     tc.load_state_dict(ck["state"])
     sc = torch.load(os.path.join(run_dir, "scales.pt"))
     return tc.eval(), sc["sx"].cuda(), sc["sy"].cuda(), c
@@ -236,9 +236,10 @@ def main():
     ap.add_argument("--n", type=int, default=64)
     ap.add_argument("--reps", type=int, default=4)
     ap.add_argument("--alpha", type=float, default=1.0)
+    ap.add_argument("--model", default="gpt2")
     ap.add_argument("--out", default="results/gpt2_interventions.json")
     a = ap.parse_args()
-    model, _ = load_gpt2()
+    model, _ = load_gpt2(name=a.model)
     tok = Tokens(a.data, seed=123, split="val")
     batches = [(tok.batch(a.n), tok.batch(a.n)) for _ in range(a.reps)]
     results = {}
@@ -268,7 +269,7 @@ def main():
         results[f"LIN/{kind}"] = run(f"LIN/{kind}", tc=lin, sx=one, sy=one, kind=kind)
     del lin
     for r in a.runs:
-        tc, sx, sy, cfg = load_tc(os.path.join(a.runs_dir, r))
+        tc, sx, sy, cfg = load_tc(os.path.join(a.runs_dir, r), model.n_layer, model.d)
         for kind in ["frozen", "full"]:
             results[f"{r}/{kind}"] = run(f"{r}/{kind}", tc=tc, sx=sx, sy=sy, kind=kind)
             results[f"{r}/{kind}"]["cfg"] = cfg
