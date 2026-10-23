@@ -124,7 +124,9 @@ def recon_from_xs(tc, xs):
 
 
 @torch.no_grad()
-def run_hybrid(model, tc, ids, error=None, override=None, real_ys0=None):
+def run_hybrid(model, tc, ids, frozen=None, override=None, real_ys0=None):
+    """frozen=(real_ys, hat): y = real + (recon(h) - recon(real x)) -- identical to
+    recon + frozen error, but bit-exact on the clean run."""
     h = model.m.embed_tokens(ids)
     B, T, d = h.shape
     pe = model._pe(h, T)
@@ -137,8 +139,8 @@ def run_hybrid(model, tc, ids, error=None, override=None, real_ys0=None):
         for j, t in enumerate(tc.targets[l]):
             pending[t] = pending[t] + out[:, j]
         y = (pending[l] + tc.b_dec[l].float()).view(B, T, d)
-        if error is not None:
-            y = y + error[l]
+        if frozen is not None:
+            y = frozen[0][l] + (y - frozen[1][l])
         elif real_ys0 is not None:
             y = y.clone()
             y[:, 0] = real_ys0[l][:, 0]  # BOS position pinned (transcoders zero it)
@@ -163,12 +165,12 @@ def evaluate_one(model, name, ids, donor, tc=None, kind="frozen", alpha=1.0):
         for l in range(L):
             a, b = real_ys[l][:, 1:].float(), hat[l][:, 1:]
             fvu.append(((a - b).pow(2).sum(-1).mean() / (a - a.mean((0, 1))).pow(2).sum(-1).mean()).item())
-        err = [real_ys[l] - hat[l] for l in range(L)] if kind == "frozen" else None
-        rep = lambda ov=None: run_hybrid(model, tc, ids, error=err, override=ov,
+        fr = (real_ys, hat) if kind == "frozen" else None
+        rep = lambda ov=None: run_hybrid(model, tc, ids, frozen=fr, override=ov,
                                          real_ys0=None if kind == "frozen" else real_ys)
     rep_logits, _, rep_ys = rep()
     if kind == "frozen" or name == "POS":
-        assert kl(real_logits, rep_logits).mean().item() < 1e-2, f"{name}: frozen hybrid != real on clean"
+        assert kl(real_logits, rep_logits).mean().item() < 1e-4, f"{name}: frozen hybrid != real on clean"
     out = {"clean_ce_real": ce(real_logits, ids), "clean_ce_rep": ce(rep_logits, ids),
            "clean_kl": kl(real_logits, rep_logits).mean().item(), "fvu": fvu, "cells": []}
     for s in range(L - 1):

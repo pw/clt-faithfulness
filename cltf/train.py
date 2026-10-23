@@ -33,6 +33,7 @@ def main():
     ap.add_argument("--c", type=float, default=4.0, help="tanh sharpness")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--lam0", type=float, default=0.1)
+    ap.add_argument("--lam_max", type=float, default=1000.0)
     ap.add_argument("--data", default="/scratch/tok/fwe.bin")
     ap.add_argument("--out", default=os.path.expanduser("~/runs"))
     a = ap.parse_args()
@@ -100,7 +101,7 @@ def main():
         if i > 3000:
             step = 0.002 * math.log(max(l0_ema, 1e-3) / a.l0)
             log_lam += max(-0.002, min(0.002, step))
-            log_lam = min(max(log_lam, math.log(1e-5)), math.log(30.0))
+            log_lam = min(max(log_lam, math.log(1e-5)), math.log(a.lam_max))
 
         if i % 200 == 0 or i == steps - 1:
             with torch.no_grad():

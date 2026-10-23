@@ -62,7 +62,8 @@ def run_hybrid(model, tc, sx, sy, ids, error=None, override=None, collect_acts=F
         for j, t in enumerate(tc.targets[l]):
             pending[t] = pending[t] + out[:, j]
         yhat = ((pending[l] + tc.b_dec[l]) / sy[l]).view(B, T, d)
-        y = yhat if error is None else yhat + error[l]
+        # error=(real_ys, hat): real + (recon(h) - recon(real x)), bit-exact on clean
+        y = yhat if error is None else error[0][l] + (yhat - error[1][l])
         if override is not None and l in override:
             y = override[l]
         xs.append(x)
@@ -143,7 +144,7 @@ def evaluate_one(model, name, ids, donor, tc=None, sx=None, sy=None, kind="froze
         if kind == "frozen":
             _, real_xs, _ = model.run(ids)
             hat_ys = recon_from_xs(tc, sx, sy, real_xs)
-            err = [real_ys[l] - hat_ys[l] for l in range(L)]
+            err = (real_ys, hat_ys)
         else:
             err = None
         rep = lambda ov=None: run_hybrid(model, tc, sx, sy, ids, error=err, override=ov)[:3]
