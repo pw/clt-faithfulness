@@ -33,6 +33,7 @@ def main():
     ap.add_argument("--c", type=float, default=4.0, help="tanh sharpness")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--model", default="gpt2")
+    ap.add_argument("--buffer", type=int, default=262144)
     ap.add_argument("--lam0", type=float, default=0.1)
     ap.add_argument("--lam_max", type=float, default=1000.0)
     ap.add_argument("--data", default="/scratch/tok/fwe.bin")
@@ -45,7 +46,7 @@ def main():
     json.dump(vars(a), open(os.path.join(out, "config.json"), "w"), indent=1)
 
     model, _ = load_gpt2(name=a.model)
-    buf = ActivationBuffer(model, Tokens(a.data, seed=a.seed))
+    buf = ActivationBuffer(model, Tokens(a.data, seed=a.seed), size=a.buffer)
     L, d = model.n_layer, model.d
 
     # per-layer scalar normalisation: E||x|| = E||y|| = sqrt(d)
