@@ -34,6 +34,8 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--model", default="gpt2")
     ap.add_argument("--buffer", type=int, default=262144)
+    ap.add_argument("--fixed_lam", type=float, default=None, help="no L0 controller: penalty-driven sparsity")
+    ap.add_argument("--theta0", type=float, default=1.0, help="initial JumpReLU threshold")
     ap.add_argument("--lam0", type=float, default=0.1)
     ap.add_argument("--lam_max", type=float, default=1000.0)
     ap.add_argument("--data", default="/scratch/tok/fwe.bin")
@@ -61,13 +63,13 @@ def main():
     else:
         torch.save({"sx": sx.cpu(), "sy": sy.cpu()}, sc_path)
 
-    tc = Transcoder(L, d, a.F, a.kind, a.window, a.norm).cuda()
+    tc = Transcoder(L, d, a.F, a.kind, a.window, a.norm, theta0=a.theta0).cuda()
     opt = torch.optim.Adam(tc.parameters(), lr=a.lr, betas=(0.9, 0.999))
     steps = int(a.tokens // a.batch)
     warm = 1000
     sched = lambda i: min(1.0, (i + 1) / warm) * (1.0 if i < 0.8 * steps else
                                                    max(0.0, (steps - i) / (0.2 * steps)))
-    log_lam = math.log(a.lam0)
+    log_lam = math.log(a.fixed_lam if a.fixed_lam is not None else a.lam0)
     l0_ema = None
     lam_p = 3e-6
     ramp = 5000
@@ -115,7 +117,7 @@ def main():
         # slow integral controller, only after the lr warmup; lambda is also
         # ramped in linearly over the first `ramp` steps
         l0_ema = l0 if l0_ema is None else 0.99 * l0_ema + 0.01 * l0
-        if i > 3000:
+        if i > 3000 and a.fixed_lam is None:
             step = 0.002 * math.log(max(l0_ema, 1e-3) / a.l0)
             log_lam += max(-0.002, min(0.002, step))
             log_lam = min(max(log_lam, math.log(1e-5)), math.log(a.lam_max))

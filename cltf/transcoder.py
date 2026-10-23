@@ -43,14 +43,14 @@ def jumprelu(z, log_theta, eps=0.1):
 
 
 class Transcoder(nn.Module):
-    def __init__(self, n_layer=12, d=768, F=8192, kind="clt", window=None, norm="concat"):
+    def __init__(self, n_layer=12, d=768, F=8192, kind="clt", window=None, norm="concat", theta0=1.0):
         super().__init__()
         self.n_layer, self.d, self.F = n_layer, d, F
         self.kind, self.window, self.norm = kind, window, norm
         self.targets = [self._targets(s) for s in range(n_layer)]
         self.W_enc = nn.Parameter(torch.empty(n_layer, d, F))
         self.b_enc = nn.Parameter(torch.zeros(n_layer, F))
-        self.log_theta = nn.Parameter(torch.full((n_layer, F), 0.0))  # theta = 1: ~4% active at init
+        self.log_theta = nn.Parameter(torch.full((n_layer, F), float(__import__('math').log(theta0))))
         self.W_dec = nn.ParameterList([
             nn.Parameter(torch.empty(F, len(self.targets[s]), d)) for s in range(n_layer)])
         self.b_dec = nn.Parameter(torch.zeros(n_layer, d))
