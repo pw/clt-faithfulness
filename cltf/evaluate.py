@@ -74,6 +74,20 @@ def run_hybrid(model, tc, sx, sy, ids, error=None, override=None, collect_acts=F
 
 
 @torch.no_grad()
+@torch.no_grad()
+def recon_from_xs(tc, sx, sy, xs):
+    """Transcoder reconstruction of every MLP output given the REAL MLP inputs."""
+    B, T, d = xs[0].shape
+    L = len(xs)
+    pending = [torch.zeros(B * T, d, device=xs[0].device) for _ in range(L)]
+    for l in range(L):
+        _, f = tc.encode(l, xs[l].reshape(-1, d) * sx[l])
+        out = tc.decode_from(l, f)
+        for j, t in enumerate(tc.targets[l]):
+            pending[t] = pending[t] + out[:, j]
+    return [((pending[l] + tc.b_dec[l]) / sy[l]).view(B, T, d) for l in range(L)]
+
+
 def run_frozen_mlps(model, ids, clean_ys, override=None):
     """NEG control: every MLP output pinned to its clean value (except overrides)."""
     h = model.embed(ids)
@@ -127,12 +141,16 @@ def evaluate_one(model, name, ids, donor, tc=None, sx=None, sy=None, kind="froze
         rep = lambda ov=None: run_frozen_mlps(model, ids, real_ys, ov)
     else:
         if kind == "frozen":
-            _, _, hat_ys, _ = run_hybrid(model, tc, sx, sy, ids)
+            _, real_xs, _ = model.run(ids)
+            hat_ys = recon_from_xs(tc, sx, sy, real_xs)
             err = [real_ys[l] - hat_ys[l] for l in range(L)]
         else:
             err = None
         rep = lambda ov=None: run_hybrid(model, tc, sx, sy, ids, error=err, override=ov)[:3]
     rep_logits, _, rep_ys = rep()
+    if kind == "frozen" or name in ("POS", "NEG"):
+        # the frozen-error hybrid must reproduce the real model on the clean run
+        assert kl(real_logits, rep_logits).mean().item() < 1e-3, f"{name}: frozen hybrid != real on clean"
     out = {"clean_ce_real": ce(real_logits, ids), "clean_ce_rep": ce(rep_logits, ids),
            "clean_kl": kl(real_logits, rep_logits).mean().item(), "cells": []}
     for s in range(L - 1):
