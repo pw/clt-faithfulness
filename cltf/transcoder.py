@@ -50,14 +50,14 @@ class Transcoder(nn.Module):
         self.targets = [self._targets(s) for s in range(n_layer)]
         self.W_enc = nn.Parameter(torch.empty(n_layer, d, F))
         self.b_enc = nn.Parameter(torch.zeros(n_layer, F))
-        self.log_theta = nn.Parameter(torch.full((n_layer, F), -2.0))  # theta ~ 0.135
+        self.log_theta = nn.Parameter(torch.full((n_layer, F), 0.0))  # theta = 1: ~4% active at init
         self.W_dec = nn.ParameterList([
             nn.Parameter(torch.empty(F, len(self.targets[s]), d)) for s in range(n_layer)])
         self.b_dec = nn.Parameter(torch.zeros(n_layer, d))
         bound_e = 1.0 / d ** 0.5
         nn.init.uniform_(self.W_enc, -bound_e, bound_e)
         for s in range(n_layer):
-            bound_d = 1.0 / (n_layer * F) ** 0.5
+            bound_d = 0.1 / d ** 0.5  # per-target decoder rows of norm ~0.06
             nn.init.uniform_(self.W_dec[s], -bound_d, bound_d)
 
     def _targets(self, s):

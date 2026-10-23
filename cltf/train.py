@@ -32,7 +32,7 @@ def main():
     ap.add_argument("--lr", type=float, default=2e-4)
     ap.add_argument("--c", type=float, default=4.0, help="tanh sharpness")
     ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--lam0", type=float, default=1e-2)
+    ap.add_argument("--lam0", type=float, default=0.1)
     ap.add_argument("--data", default="/scratch/tok/fwe.bin")
     ap.add_argument("--out", default=os.path.expanduser("~/runs"))
     a = ap.parse_args()
@@ -62,6 +62,7 @@ def main():
     log_lam = math.log(a.lam0)
     l0_ema = None
     lam_p = 3e-6
+    ramp = 5000
     logf = open(os.path.join(out, "log.jsonl"), "a")
     t0 = time.time()
     for i in range(steps):
@@ -83,7 +84,8 @@ def main():
             pre_pen = pre_pen + (torch.relu(theta - pres[s].float()) * w).sum(-1).mean()
             l0_t = l0_t + (f > 0).float().sum(-1).mean()
         l0 = l0_t.item()
-        loss = mse / L + math.exp(log_lam) * spars + lam_p * pre_pen
+        lam_eff = math.exp(log_lam) * min(1.0, (i + 1) / ramp)
+        loss = mse / L + lam_eff * spars + lam_p * pre_pen
         for g in opt.param_groups:
             g["lr"] = a.lr * sched(i)
         opt.zero_grad(set_to_none=True)
@@ -92,11 +94,13 @@ def main():
         opt.step()
 
         # sparsity controller: steer the coefficient toward the target total L0
-        l0_ema = l0 if l0_ema is None else 0.9 * l0_ema + 0.1 * l0
-        if i > 50:
-            step = 0.01 * math.log(max(l0_ema, 1e-3) / a.l0)
-            log_lam += max(-0.02, min(0.02, step))
-            log_lam = min(max(log_lam, math.log(1e-7)), math.log(100.0))
+        # slow integral controller, only after the lr warmup; lambda is also
+        # ramped in linearly over the first `ramp` steps
+        l0_ema = l0 if l0_ema is None else 0.99 * l0_ema + 0.01 * l0
+        if i > 3000:
+            step = 0.002 * math.log(max(l0_ema, 1e-3) / a.l0)
+            log_lam += max(-0.002, min(0.002, step))
+            log_lam = min(max(log_lam, math.log(1e-5)), math.log(30.0))
 
         if i % 200 == 0 or i == steps - 1:
             with torch.no_grad():
