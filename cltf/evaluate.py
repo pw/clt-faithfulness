@@ -105,6 +105,36 @@ def run_frozen_mlps(model, ids, clean_ys, override=None):
     return model.logits(h), None, ys
 
 
+class LinearReplacement:
+    """Floor baseline: each MLP replaced by a ridge-regression linear map x_l -> y_l
+    (no features at all). Same interface as Transcoder for run_hybrid."""
+    kind = "plt"
+
+    def __init__(self, model, tok, n_batches=24, lam=1e-2):
+        L, d = model.n_layer, model.d
+        self.targets = [[l] for l in range(L)]
+        XtX = torch.zeros(L, d + 1, d + 1, device="cuda", dtype=torch.float64)
+        XtY = torch.zeros(L, d + 1, d, device="cuda", dtype=torch.float64)
+        for _ in range(n_batches):
+            _, xs, ys = model.run(tok.batch(64))
+            for l in range(L):
+                x = xs[l][:, 1:].reshape(-1, d).double()
+                x = torch.cat([x, torch.ones_like(x[:, :1])], -1)
+                y = ys[l][:, 1:].reshape(-1, d).double()
+                XtX[l] += x.T @ x
+                XtY[l] += x.T @ y
+        eye = torch.eye(d + 1, device="cuda", dtype=torch.float64)
+        W = torch.linalg.solve(XtX + lam * XtX.diagonal(dim1=1, dim2=2).mean(-1)[:, None, None] * eye, XtY)
+        self.W = W[:, :d].float()
+        self.b_dec = W[:, d].float()
+
+    def encode(self, l, x):
+        return None, x
+
+    def decode_from(self, l, f):
+        return (f @ self.W[l])[:, None, :]
+
+
 def kl(p_logits, q_logits):
     """KL(p || q) per token, positions 1.. only."""
     lp = torch.log_softmax(p_logits[:, 1:].float(), -1)
@@ -232,6 +262,11 @@ def main():
     pos, neg = results["POS"]["summary"], results["NEG"]["summary"]
     assert pos["mlp_explained_mean"] > 0.999, "POS control failed"
     assert abs(neg["mlp_ratio_mean"]) < 1e-6, "NEG control failed"
+    lin = LinearReplacement(model, Tokens(a.data, seed=7))
+    one = torch.ones(model.n_layer, device="cuda")
+    for kind in ["frozen", "full"]:
+        results[f"LIN/{kind}"] = run(f"LIN/{kind}", tc=lin, sx=one, sy=one, kind=kind)
+    del lin
     for r in a.runs:
         tc, sx, sy, cfg = load_tc(os.path.join(a.runs_dir, r))
         for kind in ["frozen", "full"]:
