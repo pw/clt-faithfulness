@@ -1,6 +1,6 @@
 # Do cross-layer transcoders skip the model's real computation? A causal test
 
-DRAFT — fixed-penalty sweep still running (section C).
+GPT-2 small: complete (26 transcoders). GPT-2 medium replication: running.
 
 ## Question
 Lange et al. (ICML 2026, "Cross-Layer Transcoders are incentivized to learn Unfaithful Circuits")
@@ -123,14 +123,29 @@ is the one CLT-specific difference that survives.
   skip path *alone*, with no features, scores 0.65. The PLT's advantage is mostly its skip
   connection, not the absence of cross-layer structure.
 
-## Conclusion (pending the skip-connection runs)
+## F. Skip connections (controller recipe, matched L0)
+Each transcoder gets a learned linear map x_l → y_l (d×d, zero init), not counted in L0 or the penalty.
+
+| transcoder | L0 | cos | ratio | FVU (mid layers) |
+|---|---|---|---|---|
+| PLT | 192–198 | 0.40 | 0.91 | ~0.45 |
+| PLT + skip | 202 | **0.53** | 0.93 | ~0.33 |
+| CLT | 171–192 | 0.40 | 0.69 | ~0.34 |
+| CLT + skip | 218 | **0.55** | 0.79 | ~0.28 |
+
+The skip adds about +0.14 cos to both architectures, roughly what doubling L0 buys. Both stay equal
+to each other. The skip also cuts the CLT's magnitude under-response (ratio 0.69 → 0.79). It is the
+same lever that explains the Llama PLT's lead (its skip path alone scores 0.65).
+
+## Conclusion
 1. A causal instrument for replacement-model faithfulness: bit-exact frozen-error hybrid,
    resample-ablate MLP_s, compare every later MLP's response. It is cheap, needs no labels, and
    carries POS/NEG/linear controls.
 2. The CLT deficit you see in public transcoders is real as a number and misleading as a
    conclusion. Once sparsity and skip connections are controlled, it is not about cross-layer
    writing.
-3. **Any CLT-vs-PLT faithfulness comparison must match L0** (and skip connections). Including
-   Lange et al.'s Gemma comparison, which used CLT-HP vs GemmaScope PLTs of very different L0.
+3. **Any CLT-vs-PLT faithfulness comparison must match L0** (and skip connections). That includes
+   the Gemma-2 CLT-vs-GemmaScope comparison used as evidence: the two have very different per-layer L0 profiles.
 4. The sum-of-norms decoder penalty makes things worse.
-5. In progress: CLT and PLT with learned skip connections at matched L0 (does the skip close the gap?).
+5. Skip connections are the cheap lever: +0.14 for either architecture. CLT + skip at L0 218
+   (0.55) is as faithful as a plain transcoder would be at roughly twice the L0.
