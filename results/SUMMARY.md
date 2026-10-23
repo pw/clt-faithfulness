@@ -71,7 +71,22 @@ so sparsity came from the thresholds rather than from the penalty. In that regim
 most of their writing local. They match the PLT on direction and damp the response magnitude by
 about 25%. Seeds agree to 0.01.
 
-## C. Fixed-penalty sweep (running)
-λ ∈ {0.03, 0.1, 0.3, 1.0} concat-norm CLT; λ ∈ {0.3, 1.0} sum-of-norms CLT; λ = 0.3 PLT.
-θ₀ = 0.1, so sparsity must come from the penalty. Early training already shows the public CLTs'
-front-loaded L0 profile.
+## C. Fixed-penalty sweep (θ₀ = 0.1, so sparsity has to come from the penalty)
+Adjacent layers. L0 = total active features per token.
+
+| transcoder | λ | L0 | cos | ratio | own-layer write |
+|---|---|---|---|---|---|
+| CLT concat | 0.1 | 29 | 0.13 | 0.54 | 0.32 |
+| CLT concat | 0.3 | 7 | 0.16 | 0.32 | 0.23 |
+| CLT concat | 1.0 | 3 | 0.17 | 0.09 | 0.18 |
+| CLT sum-of-norms | 0.3 | 6 | 0.14 | 0.16 | 0.26 |
+| CLT sum-of-norms | 1.0 | 2 | 0.11 | 0.03 | 0.23 |
+| PLT | 0.3 | 15 | 0.18 | 0.52 | 1 |
+
+- Penalty-driven sparsity reproduces the public CLTs' regime: front-loaded L0 and 18–32%
+  own-layer writing. It also reproduces their adjacent-layer direction deficit.
+- At these extreme sparsities, a penalty-driven PLT is nearly as unfaithful (0.18), so this grid
+  cannot separate cross-layer routing from sparsity. Moderate-sparsity runs are pending:
+  CLT λ 0.01 / 0.003 (+seed), matched PLT λ 0.01 / 0.003, sum-of-norms λ 0.03 / 0.01 / 0.003.
+- Sum-of-norms (fix 1) does not raise own-layer writing at matched penalty. It is just a
+  stronger penalty, about 10× sparser at the same λ.
