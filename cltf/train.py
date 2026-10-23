@@ -52,7 +52,12 @@ def main():
         X, Y = buf.X[:, :65536].float(), buf.Y[:, :65536].float()
         sx = (d ** 0.5) / X.norm(dim=-1).mean(-1)
         sy = (d ** 0.5) / Y.norm(dim=-1).mean(-1)
-    torch.save({"sx": sx.cpu(), "sy": sy.cpu()}, os.path.join(out, "scales.pt"))
+    sc_path = os.path.join(out, "scales.pt")
+    if os.path.exists(sc_path):
+        sc = torch.load(sc_path)
+        sx, sy = sc["sx"].cuda(), sc["sy"].cuda()
+    else:
+        torch.save({"sx": sx.cpu(), "sy": sy.cpu()}, sc_path)
 
     tc = Transcoder(L, d, a.F, a.kind, a.window, a.norm).cuda()
     opt = torch.optim.Adam(tc.parameters(), lr=a.lr, betas=(0.9, 0.999))
@@ -64,9 +69,19 @@ def main():
     l0_ema = None
     lam_p = 3e-6
     ramp = 5000
+    start = 0
+    ck_path = os.path.join(out, "ckpt.pt")
+    if os.path.exists(ck_path):  # resume after a lost node
+        ck = torch.load(ck_path, map_location="cuda")
+        tc.load_state_dict(ck["state"])
+        if "opt" in ck:
+            opt.load_state_dict(ck["opt"])
+        start, log_lam = ck["step"] + 1, ck["log_lam"]
+        l0_ema = ck.get("l0_ema")
+        print("resumed at step", start, flush=True)
     logf = open(os.path.join(out, "log.jsonl"), "a")
     t0 = time.time()
-    for i in range(steps):
+    for i in range(start, steps):
         x, y = buf.next(a.batch)
         x = x * sx[:, None, None]
         y = y * sy[:, None, None]
@@ -115,8 +130,10 @@ def main():
             if i % 2000 == 0:
                 print(json.dumps({k: rec[k] for k in ["step", "mse", "l0", "lam", "sec"]}), flush=True)
         if (i + 1) % 10000 == 0 or i == steps - 1:
-            torch.save({"state": tc.state_dict(), "cfg": vars(a), "step": i, "log_lam": log_lam},
-                       os.path.join(out, "ckpt.pt"))
+            tmp = ck_path + ".tmp"
+            torch.save({"state": tc.state_dict(), "opt": opt.state_dict(), "cfg": vars(a), "step": i,
+                        "log_lam": log_lam, "l0_ema": l0_ema}, tmp)
+            os.replace(tmp, ck_path)
     print("done", out, flush=True)
 
 
