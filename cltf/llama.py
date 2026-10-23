@@ -31,6 +31,9 @@ class Llama:
         self.n_layer = len(m.layers)
         self.d = m.config.hidden_size
 
+    def embed(self, ids):
+        return self.m.embed_tokens(ids)
+
     def _pe(self, h, T):
         pos = torch.arange(T, device=h.device)[None]
         return self.m.rotary_emb(h, pos)
@@ -49,7 +52,7 @@ class Llama:
 
     @torch.no_grad()
     def run(self, ids, mlp_override=None):
-        h = self.m.embed_tokens(ids)
+        h = self.embed(ids)
         pe = self._pe(h, ids.shape[1])
         xs, ys = [], []
         for l in range(self.n_layer):
@@ -65,6 +68,9 @@ class Llama:
 
 
 class PublicCLT:
+    def read(self, model, l, h):
+        return h  # resid_mid
+
     def __init__(self, repo="mntss/clt-llama-3.2-1b-524k", L=16, device="cuda"):
         self.kind = "clt"
         self.L = L
@@ -88,6 +94,9 @@ class PublicCLT:
 
 
 class PublicPLT:
+    def read(self, model, l, h):
+        return h  # resid_mid
+
     def __init__(self, repo="mntss/transcoder-Llama-3.2-1B", L=16, device="cuda"):
         self.kind = "plt"
         self.L = L
@@ -111,12 +120,12 @@ class PublicPLT:
 
 
 @torch.no_grad()
-def recon_from_xs(tc, xs):
+def recon_from_xs(tc, xs, model=None):
     B, T, d = xs[0].shape
     L = len(xs)
     pending = [torch.zeros(B * T, d, device=xs[0].device) for _ in range(L)]
     for l in range(L):
-        x = xs[l].reshape(-1, d)
+        x = tc.read(model, l, xs[l]).reshape(-1, d)
         out = tc.decode_from(l, tc.encode(l, x), x)
         for j, t in enumerate(tc.targets[l]):
             pending[t] = pending[t] + out[:, j]
@@ -127,14 +136,14 @@ def recon_from_xs(tc, xs):
 def run_hybrid(model, tc, ids, frozen=None, override=None, real_ys0=None):
     """frozen=(real_ys, hat): y = real + (recon(h) - recon(real x)) -- identical to
     recon + frozen error, but bit-exact on the clean run."""
-    h = model.m.embed_tokens(ids)
+    h = model.embed(ids)
     B, T, d = h.shape
     pe = model._pe(h, T)
     pending = [torch.zeros(B * T, d, device=ids.device) for _ in range(model.n_layer)]
     ys = []
     for l in range(model.n_layer):
         h = h + model.attn(l, h, pe)
-        x = h.reshape(-1, d)
+        x = tc.read(model, l, h).reshape(-1, d)
         out = tc.decode_from(l, tc.encode(l, x), x)
         for j, t in enumerate(tc.targets[l]):
             pending[t] = pending[t] + out[:, j]
@@ -160,7 +169,7 @@ def evaluate_one(model, name, ids, donor, tc=None, kind="frozen", alpha=1.0):
         rep = lambda ov=None: model.run(ids, mlp_override=ov)
         fvu = None
     else:
-        hat = recon_from_xs(tc, real_xs)
+        hat = recon_from_xs(tc, real_xs, model)
         fvu = []
         for l in range(L):
             a, b = real_ys[l][:, 1:].float(), hat[l][:, 1:]
