@@ -130,7 +130,7 @@ def compare(d_real, d_rep):
 
 
 @torch.no_grad()
-def evaluate_one(model, name, ids, donor, tc=None, sx=None, sy=None, kind="frozen"):
+def evaluate_one(model, name, ids, donor, tc=None, sx=None, sy=None, kind="frozen", alpha=1.0):
     """Returns per-(s,t) comparisons for one replacement against the real model."""
     L = model.n_layer
     real_logits, _, real_ys = model.run(ids)
@@ -154,7 +154,8 @@ def evaluate_one(model, name, ids, donor, tc=None, sx=None, sy=None, kind="froze
     out = {"clean_ce_real": ce(real_logits, ids), "clean_ce_rep": ce(rep_logits, ids),
            "clean_kl": kl(real_logits, rep_logits).mean().item(), "cells": []}
     for s in range(L - 1):
-        ov = {s: donor_ys[s]}
+        # alpha=1: full resample ablation; alpha<1: partial move toward the donor value
+        ov = {s: real_ys[s] + alpha * (donor_ys[s] - real_ys[s])}
         ri_logits, _, ri_ys = model.run(ids, mlp_override=ov)
         pi_logits, _, pi_ys = rep(ov)
         for t in range(s + 1, L):
@@ -193,6 +194,7 @@ def main():
     ap.add_argument("--data", default="/scratch/tok/fwe.bin")
     ap.add_argument("--n", type=int, default=64)
     ap.add_argument("--reps", type=int, default=4)
+    ap.add_argument("--alpha", type=float, default=1.0)
     ap.add_argument("--out", default="results/gpt2_interventions.json")
     a = ap.parse_args()
     model, _ = load_gpt2()
@@ -201,7 +203,7 @@ def main():
     results = {}
 
     def run(name, **kw):
-        per = [evaluate_one(model, name, ids, donor, **kw) for ids, donor in batches]
+        per = [evaluate_one(model, name, ids, donor, alpha=a.alpha, **kw) for ids, donor in batches]
         # average cells across reps
         merged = per[0]
         for k in ["clean_ce_real", "clean_ce_rep", "clean_kl"]:
