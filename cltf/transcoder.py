@@ -43,7 +43,7 @@ def jumprelu(z, log_theta, eps=0.1):
 
 
 class Transcoder(nn.Module):
-    def __init__(self, n_layer=12, d=768, F=8192, kind="clt", window=None, norm="concat", theta0=1.0):
+    def __init__(self, n_layer=12, d=768, F=8192, kind="clt", window=None, norm="concat", theta0=1.0, skip=False):
         super().__init__()
         self.n_layer, self.d, self.F = n_layer, d, F
         self.kind, self.window, self.norm = kind, window, norm
@@ -54,6 +54,8 @@ class Transcoder(nn.Module):
         self.W_dec = nn.ParameterList([
             nn.Parameter(torch.empty(F, len(self.targets[s]), d)) for s in range(n_layer)])
         self.b_dec = nn.Parameter(torch.zeros(n_layer, d))
+        # optional learned linear skip x_l -> y_l (not counted in L0 or the penalty)
+        self.W_skip = nn.Parameter(torch.zeros(n_layer, d, d)) if skip else None
         bound_e = 1.0 / d ** 0.5
         nn.init.uniform_(self.W_enc, -bound_e, bound_e)
         for s in range(n_layer):
@@ -98,4 +100,6 @@ class Transcoder(nn.Module):
             out = self.decode_from(s, f)
             for j, t in enumerate(self.targets[s]):
                 yhat[t] = yhat[t] + out[:, j]
+            if self.W_skip is not None:
+                yhat[s] = yhat[s] + xs[s] @ self.W_skip[s]
         return yhat, acts, pres

@@ -35,6 +35,7 @@ def main():
     ap.add_argument("--model", default="gpt2")
     ap.add_argument("--buffer", type=int, default=262144)
     ap.add_argument("--fixed_lam", type=float, default=None, help="no L0 controller: penalty-driven sparsity")
+    ap.add_argument("--skip", action="store_true")
     ap.add_argument("--theta0", type=float, default=1.0, help="initial JumpReLU threshold")
     ap.add_argument("--lam0", type=float, default=0.1)
     ap.add_argument("--lam_max", type=float, default=1000.0)
@@ -63,7 +64,7 @@ def main():
     else:
         torch.save({"sx": sx.cpu(), "sy": sy.cpu()}, sc_path)
 
-    tc = Transcoder(L, d, a.F, a.kind, a.window, a.norm, theta0=a.theta0).cuda()
+    tc = Transcoder(L, d, a.F, a.kind, a.window, a.norm, theta0=a.theta0, skip=a.skip).cuda()
     opt = torch.optim.Adam(tc.parameters(), lr=a.lr, betas=(0.9, 0.999))
     steps = int(a.tokens // a.batch)
     warm = 1000

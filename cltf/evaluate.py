@@ -39,7 +39,7 @@ from .transcoder import Transcoder
 def load_tc(run_dir, n_layer=12, d=768):
     ck = torch.load(os.path.join(run_dir, "ckpt.pt"), map_location="cuda")
     c = ck["cfg"]
-    tc = Transcoder(n_layer, d, c["F"], c["kind"], c["window"], c["norm"]).cuda()
+    tc = Transcoder(n_layer, d, c["F"], c["kind"], c["window"], c["norm"], skip=c.get("skip", False)).cuda()
     tc.load_state_dict(ck["state"])
     sc = torch.load(os.path.join(run_dir, "scales.pt"))
     return tc.eval(), sc["sx"].cuda(), sc["sy"].cuda(), c
@@ -63,7 +63,8 @@ def run_hybrid(model, tc, sx, sy, ids, error=None, override=None, collect_acts=F
         out = tc.decode_from(l, f)
         for j, t in enumerate(tc.targets[l]):
             pending[t] = pending[t] + out[:, j]
-        yhat = ((pending[l] + tc.b_dec[l]) / sy[l]).view(B, T, d)
+        sk = (x.reshape(-1, d) * sx[l]) @ tc.W_skip[l] if getattr(tc, "W_skip", None) is not None else 0.0
+        yhat = ((pending[l] + tc.b_dec[l] + sk) / sy[l]).view(B, T, d)
         # error=(real_ys, hat): real + (recon(h) - recon(real x)), bit-exact on clean
         y = yhat if error is None else error[0][l] + (yhat - error[1][l])
         if override is not None and l in override:
@@ -88,6 +89,8 @@ def recon_from_xs(tc, sx, sy, xs):
         out = tc.decode_from(l, f)
         for j, t in enumerate(tc.targets[l]):
             pending[t] = pending[t] + out[:, j]
+        if getattr(tc, "W_skip", None) is not None:
+            pending[l] = pending[l] + (xs[l].reshape(-1, d) * sx[l]) @ tc.W_skip[l]
     return [((pending[l] + tc.b_dec[l]) / sy[l]).view(B, T, d) for l in range(L)]
 
 
