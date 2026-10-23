@@ -133,7 +133,7 @@ def recon_from_xs(tc, xs, model=None):
 
 
 @torch.no_grad()
-def run_hybrid(model, tc, ids, frozen=None, override=None, real_ys0=None):
+def run_hybrid(model, tc, ids, frozen=None, override=None, real_ys0=None, src=None):
     """frozen=(real_ys, hat): y = real + (recon(h) - recon(real x)) -- identical to
     recon + frozen error, but bit-exact on the clean run."""
     h = model.embed(ids)
@@ -144,7 +144,9 @@ def run_hybrid(model, tc, ids, frozen=None, override=None, real_ys0=None):
     for l in range(model.n_layer):
         h = h + model.attn(l, h, pe)
         x = tc.read(model, l, h).reshape(-1, d)
-        out = tc.decode_from(l, tc.encode(l, x), x)
+        # src: replace this source layer's FEATURES (so their cross-layer writes change too)
+        f = src[l] if (src is not None and l in src) else tc.encode(l, x)
+        out = tc.decode_from(l, f, x)
         for j, t in enumerate(tc.targets[l]):
             pending[t] = pending[t] + out[:, j]
         y = (pending[l] + tc.b_dec[l].float()).view(B, T, d)
@@ -164,7 +166,7 @@ def run_hybrid(model, tc, ids, frozen=None, override=None, real_ys0=None):
 def evaluate_one(model, name, ids, donor, tc=None, kind="frozen", alpha=1.0):
     L = model.n_layer
     real_logits, real_xs, real_ys = model.run(ids)
-    _, _, donor_ys = model.run(donor)
+    _, donor_xs, donor_ys = model.run(donor)
     if name == "POS":
         rep = lambda ov=None: model.run(ids, mlp_override=ov)
         fvu = None
@@ -175,13 +177,13 @@ def evaluate_one(model, name, ids, donor, tc=None, kind="frozen", alpha=1.0):
             a, b = real_ys[l][:, 1:].float(), hat[l][:, 1:]
             fvu.append(((a - b).pow(2).sum(-1).mean() / (a - a.mean((0, 1))).pow(2).sum(-1).mean()).item())
         fr = (real_ys, hat) if kind == "frozen" else None
-        rep = lambda ov=None: run_hybrid(model, tc, ids, frozen=fr, override=ov,
-                                         real_ys0=None if kind == "frozen" else real_ys)
+        rep = lambda ov=None, src=None: run_hybrid(model, tc, ids, frozen=fr, override=ov,
+                                                   real_ys0=None if kind == "frozen" else real_ys, src=src)
     rep_logits, _, rep_ys = rep()
     if kind == "frozen" or name == "POS":
         assert kl(real_logits, rep_logits).mean().item() < 1e-4, f"{name}: frozen hybrid != real on clean"
     out = {"clean_ce_real": ce(real_logits, ids), "clean_ce_rep": ce(rep_logits, ids),
-           "clean_kl": kl(real_logits, rep_logits).mean().item(), "fvu": fvu, "cells": []}
+           "clean_kl": kl(real_logits, rep_logits).mean().item(), "fvu": fvu, "cells": [], "cells_src": []}
     for s in range(L - 1):
         ov = {s: real_ys[s] + alpha * (donor_ys[s] - real_ys[s])}
         ri_logits, _, ri_ys = model.run(ids, mlp_override=ov)
@@ -197,6 +199,16 @@ def evaluate_one(model, name, ids, donor, tc=None, kind="frozen", alpha=1.0):
                   "kl_rep": kl(rep_logits, pi_logits).mean().item()})
         out["cells"].append(c)
         del dl_real, dl_rep
+        if tc is not None and tc.kind == "clt" and alpha == 1.0:
+            # charitable to the CLT: also swap the source-s features, so everything the
+            # replacement attributes to layer s (incl. its direct writes into later layers) changes
+            d = real_xs[s].shape[-1]
+            f_don = tc.encode(s, tc.read(model, s, donor_xs[s]).reshape(-1, d))
+            si_logits, _, si_ys = rep(ov, {s: f_don})
+            for t in range(s + 1, L):
+                c = compare(ri_ys[t] - real_ys[t], si_ys[t] - rep_ys[t])
+                c.update({"s": s, "t": t})
+                out["cells_src"].append(c)
     return out
 
 
@@ -246,9 +258,10 @@ def main():
             merged[k] = sum(p[k] for p in per) / len(per)
         if merged["fvu"] is not None:
             merged["fvu"] = [sum(p["fvu"][l] for p in per) / len(per) for l in range(len(merged["fvu"]))]
-        for i, c in enumerate(merged["cells"]):
-            for k in ["explained", "ratio", "cos", "real_mag"] + (["kl_real", "kl_rep"] if c["t"] == "logits" else []):
-                c[k] = sum(p["cells"][i][k] for p in per) / len(per)
+        for key in ["cells", "cells_src"]:
+            for i, c in enumerate(merged[key]):
+                for k in ["explained", "ratio", "cos", "real_mag"] + (["kl_real", "kl_rep"] if c["t"] == "logits" else []):
+                    c[k] = sum(p[key][i][k] for p in per) / len(per)
         merged["summary"] = summarize(merged)
         print(name, json.dumps({k: round(v, 4) for k, v in merged["summary"].items()}),
               "fvu", None if merged["fvu"] is None else [round(v, 3) for v in merged["fvu"]], flush=True)

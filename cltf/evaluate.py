@@ -46,7 +46,7 @@ def load_tc(run_dir):
 
 
 @torch.no_grad()
-def run_hybrid(model, tc, sx, sy, ids, error=None, override=None, collect_acts=False):
+def run_hybrid(model, tc, sx, sy, ids, error=None, override=None, collect_acts=False, src=None):
     """Replacement-model forward. error: list of per-layer tensors added to the
     reconstruction (frozen-error mode) or None (full replacement)."""
     h = model.embed(ids)
@@ -58,6 +58,8 @@ def run_hybrid(model, tc, sx, sy, ids, error=None, override=None, collect_acts=F
         h = h + model.attn(l, h)
         x = model.mlp_in(l, h)
         _, f = tc.encode(l, x.reshape(-1, d) * sx[l])
+        if src is not None and l in src:
+            f = src[l]  # swap this source layer's features (their cross-layer writes too)
         out = tc.decode_from(l, f)
         for j, t in enumerate(tc.targets[l]):
             pending[t] = pending[t] + out[:, j]
@@ -135,7 +137,7 @@ def evaluate_one(model, name, ids, donor, tc=None, sx=None, sy=None, kind="froze
     """Returns per-(s,t) comparisons for one replacement against the real model."""
     L = model.n_layer
     real_logits, _, real_ys = model.run(ids)
-    _, _, donor_ys = model.run(donor)
+    _, donor_xs, donor_ys = model.run(donor)
     if name == "POS":
         rep = lambda ov=None: model.run(ids, mlp_override=ov)
     elif name == "NEG":
@@ -147,13 +149,13 @@ def evaluate_one(model, name, ids, donor, tc=None, sx=None, sy=None, kind="froze
             err = (real_ys, hat_ys)
         else:
             err = None
-        rep = lambda ov=None: run_hybrid(model, tc, sx, sy, ids, error=err, override=ov)[:3]
+        rep = lambda ov=None, src=None: run_hybrid(model, tc, sx, sy, ids, error=err, override=ov, src=src)[:3]
     rep_logits, _, rep_ys = rep()
     if kind == "frozen" or name in ("POS", "NEG"):
         # the frozen-error hybrid must reproduce the real model on the clean run
         assert kl(real_logits, rep_logits).mean().item() < 1e-3, f"{name}: frozen hybrid != real on clean"
     out = {"clean_ce_real": ce(real_logits, ids), "clean_ce_rep": ce(rep_logits, ids),
-           "clean_kl": kl(real_logits, rep_logits).mean().item(), "cells": []}
+           "clean_kl": kl(real_logits, rep_logits).mean().item(), "cells": [], "cells_src": []}
     for s in range(L - 1):
         # alpha=1: full resample ablation; alpha<1: partial move toward the donor value
         ov = {s: real_ys[s] + alpha * (donor_ys[s] - real_ys[s])}
@@ -171,6 +173,14 @@ def evaluate_one(model, name, ids, donor, tc=None, sx=None, sy=None, kind="froze
                   "kl_real": kl(real_logits, ri_logits).mean().item(),
                   "kl_rep": kl(rep_logits, pi_logits).mean().item()})
         out["cells"].append(c)
+        if tc is not None and tc.kind != "plt" and alpha == 1.0:
+            d = donor_xs[s].shape[-1]
+            _, f_don = tc.encode(s, donor_xs[s].reshape(-1, d) * sx[s])
+            _, _, si_ys = rep(ov, {s: f_don})
+            for t in range(s + 1, L):
+                c = compare(ri_ys[t] - real_ys[t], si_ys[t] - rep_ys[t])
+                c.update({"s": s, "t": t})
+                out["cells_src"].append(c)
     return out
 
 
@@ -209,9 +219,10 @@ def main():
         merged = per[0]
         for k in ["clean_ce_real", "clean_ce_rep", "clean_kl"]:
             merged[k] = sum(p[k] for p in per) / len(per)
-        for i, c in enumerate(merged["cells"]):
-            for k in ["explained", "ratio", "cos", "real_mag"] + (["kl_real", "kl_rep"] if c["t"] == "logits" else []):
-                c[k] = sum(p["cells"][i][k] for p in per) / len(per)
+        for key in ["cells", "cells_src"]:
+            for i, c in enumerate(merged[key]):
+                for k in ["explained", "ratio", "cos", "real_mag"] + (["kl_real", "kl_rep"] if c["t"] == "logits" else []):
+                    c[k] = sum(p[key][i][k] for p in per) / len(per)
         merged["summary"] = summarize(merged)
         print(name, json.dumps({k: round(v, 4) for k, v in merged["summary"].items()}), flush=True)
         return merged

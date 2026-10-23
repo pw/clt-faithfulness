@@ -154,9 +154,10 @@ def main():
             merged[k] = sum(p[k] for p in per) / len(per)
         if merged["fvu"] is not None:
             merged["fvu"] = [sum(p["fvu"][l] for p in per) / len(per) for l in range(len(merged["fvu"]))]
-        for i, c in enumerate(merged["cells"]):
-            for k in ["explained", "ratio", "cos", "real_mag"] + (["kl_real", "kl_rep"] if c["t"] == "logits" else []):
-                c[k] = sum(p["cells"][i][k] for p in per) / len(per)
+        for key in ["cells", "cells_src"]:
+            for i, c in enumerate(merged[key]):
+                for k in ["explained", "ratio", "cos", "real_mag"] + (["kl_real", "kl_rep"] if c["t"] == "logits" else []):
+                    c[k] = sum(p[key][i][k] for p in per) / len(per)
         merged["summary"] = summarize(merged)
         print(name, json.dumps({k: round(v, 4) for k, v in merged["summary"].items()}),
               "fvu", None if merged["fvu"] is None else [round(v, 3) for v in merged["fvu"]], flush=True)
