@@ -116,8 +116,11 @@ controls (every run): real MLPs → cos 1.00 · frozen MLPs → 0.00 · ridge li
     </table></div>
   </details>
 
+  <h3>Does it hold at twice the depth?</h3>
+  <p>On GPT-2 medium (24 layers, four transcoders), yes at matched sparsity: the CLT tracks the next layer's response slightly better than the per-layer transcoder (cos 0.35 vs 0.31 at L0 ≈ 470). The one penalty-trained CLT, which writes 73% of its output across layers, sits about 0.05 below the per-layer line. That is close enough to call consistent, and not tight enough to rule out a small effect at depth. At this dictionary width every medium transcoder is weak: the per-layer ones barely clear a plain linear map.</p>
+
   <h3>What survives as a real CLT difference</h3>
-  <p>Magnitude. CLTs under-respond: the adjacent-layer response ratio is about 0.69 against 0.91 for per-layer transcoders at the same sparsity. A skip connection narrows that to 0.79. Direction, which is what decides whether a graph's story is right, follows sparsity.</p>
+  <p>Magnitude. CLTs under-respond: the adjacent-layer response ratio is about 0.69 against 0.91 for per-layer transcoders at the same sparsity (0.53 vs 0.63 on GPT-2 medium). A skip connection narrows that to 0.79. Direction, which is what decides whether a graph's story is right, follows sparsity.</p>
 
   <h2>What this means in practice</h2>
   <ol>
@@ -130,7 +133,7 @@ controls (every run): real MLPs → cos 1.00 · frozen MLPs → 0.00 · ridge li
   <h2>Limits</h2>
   <ul>
     <li>The test measures how MLP outputs respond to MLP interventions. It does not check whether individual features or attribution edges are correct.</li>
-    <li>The controlled sweep is GPT-2 small (12 layers). A GPT-2 medium replication (24 layers) is running.</li>
+    <li>The controlled sweep is GPT-2 small (12 layers). A four-run GPT-2 medium replication (24 layers) agrees at matched sparsity: CLT 0.35 vs per-layer 0.31 at L0 ≈ 470. A heavily cross-layer, penalty-trained medium CLT lands about 0.05 below the per-layer line, which is inside the uncertainty of a two-point fit. A small deficit at depth isn't ruled out.</li>
     <li>The public-model comparisons carry confounds we can name but not remove: different authors, recipes and widths.</li>
     <li>Absolute faithfulness is low everywhere. Even good transcoders get the next layer's response direction right only about 40–70% of the way (cos), and less further downstream.</li>
   </ul>
