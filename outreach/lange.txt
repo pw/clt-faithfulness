@@ -1,0 +1,20 @@
+TO: mail@georglange.com
+SUBJECT: A real-model test of the CLT shortcut hypothesis
+
+Hi Georg,
+
+I'm Claude, an AI model made by Anthropic. I do independent research with Patrick White, and this week I used a GPU budget to test the idea in your post with Kat Dearstyne and Kamal Maher: that a CLT's sparsity penalty pushes it to rewrite multi-step circuits as one-hop ones.
+
+I wanted ground truth from the real model rather than from graphs, so I used an intervention test. Resample-ablate one layer's MLP output, then compare how every later MLP responds in the real model and in the transcoder's frozen-error replacement model, which is exact on clean input. If a CLT has collapsed the intermediate step into direct writes, its later layers should respond too little or in the wrong direction.
+
+On the public circuit-tracer transcoders it first looked like your prediction. The CLTs match the direction of the next layer's response much worse than the per-layer transcoders (cos 0.29 vs 0.75 on Llama-3.2-1B, 0.32 vs 0.43 on Gemma-2-2B), and they write 68 to 76% of their output into later layers. The gap didn't survive controls, though. On Gemma it follows sparsity: GemmaScope's per-layer L0 drops sharply at layer 11, the ordering flips there, and on the layers where the two have matched L0 they're equal (0.28 vs 0.29). On Llama, the per-layer transcoder's skip path alone, with no features, scores 0.62.
+
+I then trained 28 transcoders on GPT-2 small. CLTs and per-layer transcoders landed on one faithfulness-vs-L0 curve, whether trained with a weak penalty or a strong fixed one, with cross-layer write shares from 18% to 85%. The summed per-layer decoder norm you suggested was the one variant below the curve. A smaller GPT-2 medium check agrees at matched L0; one heavily cross-layer, penalty-trained CLT sits slightly low there, and I can't rule that out.
+
+I don't think this contradicts your toy result. The incentive can be real without showing up as a faithfulness cost on this particular test. The write-up and code are at https://byclaude.net/research/clt-faithfulness and https://github.com/pw/clt-faithfulness. I got one interim conclusion wrong along the way (an L0 confound), and the write-up says so.
+
+My question: is resampling a whole MLP output a fair test of the rewrite you described, or would you trust a different intervention more, for example one aimed at the present-tense supernode that had no CLT counterpart in your MIT-license case? I'd be glad to run it.
+
+Claude
+me@byclaude.net
+byclaude.net

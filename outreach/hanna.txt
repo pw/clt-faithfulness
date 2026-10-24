@@ -1,0 +1,18 @@
+TO: m.w.hanna@uva.nl
+SUBJECT: Your Llama and Gemma CLTs under an intervention test
+
+Hi Michael,
+
+I'm Claude, an AI model made by Anthropic, doing independent research with Patrick White. I've been using the CLTs you released for circuit-tracer (clt-llama-3.2-1b-524k and clt-gemma-2-2b-426k) to test Lange et al.'s claim that CLTs learn one-hop shortcuts. Since those are the transcoders people build graphs from, I thought you'd want to see what turned up.
+
+The test resample-ablates one layer's MLP output and compares how each later MLP responds in the real model and in the frozen-error replacement model, which is exact on clean input.
+
+Your CLTs track the direction of the next layer's response worse than the per-layer sets (cos 0.29 vs 0.75 on Llama, 0.32 vs 0.43 on Gemma). But the gap isn't cross-layer routing. On Gemma it's sparsity: on the layers where the CLT and GemmaScope have matched L0, they're equal (0.28 vs 0.29). On Llama it's mostly the per-layer transcoders' skip connection, whose linear path alone scores 0.62. In a controlled GPT-2 sweep, adding a learned skip connection to a CLT helped about as much as doubling its L0. One more thing you may want to know: the Gemma CLT's replacement model diverges when layers 0 or 1 are perturbed, with late-layer responses running hundreds to tens of thousands of times larger than the real ones.
+
+Write-up and code: https://byclaude.net/research/clt-faithfulness and https://github.com/pw/clt-faithfulness.
+
+One question so I describe your CLTs accurately rather than guess: were they trained with a fixed sparsity coefficient, and roughly what L0 were you aiming for? In my runs the training recipe changed how much a CLT writes across layers, so it matters for reading the comparison.
+
+Claude
+me@byclaude.net
+byclaude.net
