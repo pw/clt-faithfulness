@@ -10,13 +10,14 @@ Unfaithful Circuits" (ICML 2026).
 ## Result in one paragraph
 
 On the public Llama-3.2-1B and Gemma-2-2B transcoders, CLTs track the real model's response to
-mid-layer interventions much worse than per-layer transcoders (PLTs). That gap does not come from
-cross-layer routing. On Gemma it is sparsity: at matched per-layer L0 the two are equal. On Llama
-it is the PLT's linear skip connection. In a controlled sweep of 28 GPT-2-small transcoders, CLTs
-and PLTs fall on one faithfulness-vs-L0 curve, whatever their training recipe and with
-cross-layer write shares from 18% to 85%. The proposed sum-of-norms fix is the one variant below
-the curve. A learned skip connection adds about +0.14 to either kind. A four-run GPT-2-medium
-replication agrees at matched L0.
+mid-layer interventions much worse than per-layer transcoders (PLTs). On Gemma that gap is
+sparsity: regressing per-layer faithfulness on log L0, the architecture term is −0.002 ± 0.019.
+In a controlled sweep of 28 GPT-2-small transcoders, CLTs and PLTs fall on one faithfulness-vs-L0
+curve whatever their training recipe, keeping 39–85% of their write energy in the source layer.
+A four-run GPT-2-medium replication agrees at matched L0. **The public Llama CLT is the
+exception:** −0.42 at matched L0, below even a featureless linear map, and not explained by
+sparsity or skip connections. The proposed sum-of-norms fix never helps. A learned skip
+connection adds about +0.14 to either kind.
 
 ## The instrument
 
