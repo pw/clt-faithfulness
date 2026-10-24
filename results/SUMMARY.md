@@ -1,6 +1,6 @@
 # Do cross-layer transcoders skip the model's real computation? A causal test
 
-GPT-2 small: complete (26 transcoders). GPT-2 medium replication: running.
+GPT-2 small: 28 transcoders. GPT-2 medium replication: 4 transcoders (section G).
 
 ## Question
 Lange et al. (ICML 2026, "Cross-Layer Transcoders are incentivized to learn Unfaithful Circuits")
@@ -137,6 +137,27 @@ The skip adds about +0.14 cos to both architectures, roughly what doubling L0 bu
 to each other. The skip also cuts the CLT's magnitude under-response (ratio 0.69 → 0.79). It is the
 same lever that explains the Llama PLT's lead (its skip path alone scores 0.65).
 
+## G. GPT-2 medium replication (24 layers, 4,096 features/layer, 150M tokens)
+Adjacent layers:
+
+| transcoder | recipe | L0 | cos | ratio | own-layer write |
+|---|---|---|---|---|---|
+| ridge linear floor | – | – | 0.32 | 0.41 | – |
+| PLT | fixed penalty λ=0.01 | 247 | 0.25 | 0.57 | 1 |
+| PLT | L0 controller | 465 | 0.31 | 0.63 | 1 |
+| CLT | L0 controller | 476 | **0.35** | 0.53 | 0.61 |
+| CLT | fixed penalty λ=0.01 | 135 | 0.14 | 0.53 | 0.27 |
+
+- **At matched L0 the CLT is not behind:** 0.35 vs 0.31 at L0 ≈ 470. This replicates the GPT-2
+  small result in a model twice as deep.
+- The penalty-trained CLT writes 73% of its energy across layers, as heavily cross-layer as the
+  public CLTs. It lands at 0.14, about 0.05 below the PLT line extrapolated from two points
+  (predicted 0.19 at L0 135). That gap is inside the extrapolation's uncertainty. It is
+  consistent with "on the curve" and leaves open a small penalty-CLT deficit at this depth.
+- Medium transcoders at this width are weak overall: both PLTs sit at or below the linear floor
+  at adjacent layers. A wider dictionary would be needed for a sharper medium-scale test.
+- The CLT magnitude under-response replicates: ratio 0.53 vs 0.63.
+
 ## Conclusion
 1. A causal instrument for replacement-model faithfulness: bit-exact frozen-error hybrid,
    resample-ablate MLP_s, compare every later MLP's response. It is cheap, needs no labels, and
@@ -149,3 +170,5 @@ same lever that explains the Llama PLT's lead (its skip path alone scores 0.65).
 4. The sum-of-norms decoder penalty makes things worse.
 5. Skip connections are the cheap lever: +0.14 for either architecture. CLT + skip at L0 218
    (0.55) is as faithful as a plain transcoder would be at roughly twice the L0.
+6. GPT-2 medium replicates the matched-L0 result (CLT 0.35 vs PLT 0.31). A small deficit for
+   heavily cross-layer, penalty-trained CLTs at depth can't be ruled out from these four runs.
