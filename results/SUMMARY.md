@@ -129,9 +129,12 @@ response at target t is paired with the L0 of the features that can respond: CLT
   **−0.42 (SE 0.03)**. The PLT's linear skip path alone, with no features, scores 0.62 averaged
   over all layers (0.65 over the layers with L0 within 2× of the CLT's). The PLT's features add
   only +0.12 over that. So the PLT's lead is mostly its skip connection, but the CLT (0.29) sits
-  far below even a featureless linear map, and nothing here accounts for that. This CLT is also the
-  most cross-layer-heavy we measured (32% own-layer). Open hypotheses: its training recipe, model
-  depth, or cross-layer writing at an extreme our own runs didn't reach.
+  far below even a featureless linear map, and nothing here accounts for that. Cross-layer writing
+  as such doesn't either: it keeps 32% of its write energy in the source layer, while the Gemma CLT
+  keeps 24% with no architecture effect. (Our on-curve GPT-2-small CLTs go down to 39%; the one
+  GPT-2-medium penalty CLT, at 27%, sat about 0.05 low.) Open hypotheses: its training recipe,
+  width, or something about Llama. Reproduce both regressions with `python -m cltf.archreg`
+  (pooled −0.42 / layer fixed effects −0.46 for Llama; −0.002 / −0.016 for Gemma).
 
 ## F. Skip connections (controller recipe, matched L0)
 Each transcoder gets a learned linear map x_l → y_l (d×d, zero init), not counted in L0 or the penalty.
