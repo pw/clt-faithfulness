@@ -135,6 +135,9 @@ response at target t is paired with the L0 of the features that can respond: CLT
   GPT-2-medium penalty CLT, at 27%, sat about 0.05 low.) Open hypotheses: its training recipe,
   width, or something about Llama. Reproduce both regressions with `python -m cltf.archreg`
   (pooled −0.42 / layer fixed effects −0.46 for Llama; −0.002 / −0.016 for Gemma).
+  Sensitivity: Llama's own fitted sparsity slope is nearly flat (0.03 cos per e-fold of L0).
+  Borrowing GPT-2's slope (0.18) instead, sparsity would account for roughly 0.24 of the raw gap,
+  leaving about 0.2. Either way a real CLT deficit remains on Llama.
 
 ## F. Skip connections (controller recipe, matched L0)
 Each transcoder gets a learned linear map x_l → y_l (d×d, zero init), not counted in L0 or the penalty.
