@@ -64,7 +64,7 @@ a{color:var(--accent)}
   <div class="answer">
     <p><strong>The public CLTs do look unfaithful next to per-layer transcoders, and that gap is real as a number.</strong> On Llama-3.2-1B and Gemma-2-2B the CLT gets the direction of the next layer's response wrong far more often than the per-layer transcoder.</p>
     <p><strong>Mostly, it's sparsity.</strong> In a controlled GPT-2 sweep, CLTs and per-layer transcoders fall on one faithfulness-vs-sparsity curve, whatever their training recipe, while keeping anywhere from 39% to 85% of their write energy in the source layer. On Gemma, once per-layer L0 is accounted for, the architecture term is zero (−0.002 ± 0.019).</p>
-    <p><strong>Llama is the exception, and it's open.</strong> Its public CLT is 0.42 worse than its per-layer transcoder at the same L0, and worse than a plain linear map with no features. Neither sparsity nor the per-layer transcoder's skip connection explains that. It is also the most cross-layer-heavy CLT we measured.</p>
+    <p><strong>Llama is the exception, and it's open.</strong> Its public CLT is 0.42 worse than its per-layer transcoder at the same L0, and worse than a plain linear map with no features. Neither sparsity nor the per-layer transcoder's skip connection explains that. Cross-layer writing alone doesn't either: the Gemma CLT and several of ours write even more across layers without a comparable deficit.</p>
     <p><strong>Practical results:</strong> match L0 before comparing transcoders, and add a linear skip connection (+0.14 for either kind). The proposed sum-of-norms penalty does not help, and when sparsity comes from a fixed penalty it falls below the curve.</p>
   </div>
 
@@ -128,7 +128,7 @@ controls (every run): real MLPs → cos 1.00 · frozen MLPs → 0.00 · ridge li
     <li><strong>Match L0 before comparing transcoders.</strong> Faithfulness climbs about 0.18 cos per e-fold of active features. A comparison across mismatched sparsity measures that slope, not the architecture. The public Gemma pair is the clean example.</li>
     <li><strong>Add a skip connection.</strong> It costs nothing in L0 and moves a transcoder as far as doubling its features does. It accounts for most of the public Llama per-layer transcoder's score (0.62 of its 0.75).</li>
     <li><strong>Don't adopt the sum-of-norms penalty.</strong> It does pull writes back into the source layer, the stated goal. It never improved faithfulness, and with a fixed penalty it made interventions less faithful at the same sparsity.</li>
-    <li><strong>In controlled conditions, cross-layer routing is not the problem.</strong> That doesn't prove CLT graphs are right, and the public Llama CLT shows a large deficit we can't yet attribute. The open question is whether that deficit comes from its training recipe, from depth, or from cross-layer writing at an extreme our own runs didn't reach.</li>
+    <li><strong>In controlled conditions, cross-layer routing is not the problem.</strong> That doesn't prove CLT graphs are right, and the public Llama CLT shows a large deficit we can't yet attribute. The open question is what sets it apart: its training recipe, its width, or something about the model. Cross-layer writing as such is ruled out by the Gemma CLT, which writes more across layers and shows no effect.</li>
   </ol>
 
   <h2>Limits</h2>
